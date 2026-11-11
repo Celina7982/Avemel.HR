@@ -1,0 +1,9 @@
+﻿@page "/admin"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "ADMIN,MANAGER")]
+@layout global::Avemel.HR.Web.Components.Avemel.AdminLayout
+
+<PageTitle>Dashboard | Avemel HR</PageTitle>
+
+<h1>Dashboard</h1>
+<p>Welcome to the Avemel HR Intranet.</p>

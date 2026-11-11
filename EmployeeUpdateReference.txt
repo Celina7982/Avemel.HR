@@ -1,0 +1,271 @@
+using System.Security.Claims;
+using Avemel.HR.Application.Employees;
+using Avemel.HR.Domain.Entities;
+using Avemel.HR.Infrastructure.Identity;
+using Avemel.HR.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
+
+namespace Avemel.HR.Infrastructure.Services;
+
+public sealed class EmployeeCreationService : IEmployeeCreationService
+{
+    private readonly ApplicationDbContext _db;
+    private readonly UserManager<ApplicationUser> _userManager;
+    private readonly RoleManager<IdentityRole> _roleManager;
+    private readonly EmployeeNumberService _numberService;
+    private readonly ILogger<EmployeeCreationService> _logger;
+
+    public EmployeeCreationService(
+        ApplicationDbContext db,
+        UserManager<ApplicationUser> userManager,
+        RoleManager<IdentityRole> roleManager,
+        EmployeeNumberService numberService,
+        ILogger<EmployeeCreationService> logger)
+    {
+        _db = db;
+        _userManager = userManager;
+        _roleManager = roleManager;
+        _numberService = numberService;
+        _logger = logger;
+    }
+
+    public async Task<EmployeeCreationResult> CreateAsync(
+        EmployeeCreationRequest request,
+        ClaimsPrincipal actingUser,
+        CancellationToken cancellationToken = default)
+    {
+        if (!(actingUser.Identity?.IsAuthenticated == true && actingUser.IsInRole("ADMIN")))
+            return EmployeeCreationResult.Failure("Only an authenticated administrator may create employees.");
+
+        var errors = request.Validate().ToList();
+        if (errors.Count != 0)
+            return new EmployeeCreationResult(false, null, errors);
+
+        var email = request.Email.Trim();
+        var employeeNumber = request.EmployeeNumber.Trim();
+        var role = request.Role.Trim().ToUpperInvariant();
+
+        if (request.DivisionId is not null && !await _db.Divisions.AnyAsync(d => d.Id == request.DivisionId && d.Active, cancellationToken))
+            errors.Add("The selected division does not exist or is inactive.");
+        if (request.ManagerId is not null && !await _db.Employees.AnyAsync(e => e.Id == request.ManagerId && e.Status != "TERMINATED", cancellationToken))
+            errors.Add("The selected reporting manager does not exist or is no longer active.");
+        if (!await _roleManager.RoleExistsAsync(role))
+            errors.Add("The selected Identity role is not available.");
+        if (await _db.Employees.AnyAsync(e => e.Email.ToUpper() == email.ToUpper(), cancellationToken))
+            errors.Add("An employee with this email address already exists.");
+        if (!string.IsNullOrWhiteSpace(employeeNumber) && await _db.Employees.AnyAsync(e => e.EmployeeNumber == employeeNumber, cancellationToken))
+            errors.Add("An employee with this employee number already exists.");
+
+        if (errors.Count != 0)
+            return new EmployeeCreationResult(false, null, errors);
+
+        await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
+        ApplicationUser? identityUser = null;
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(employeeNumber))
+                employeeNumber = await _numberService.GenerateNextAsync(cancellationToken);
+
+            identityUser = new ApplicationUser
+            {
+                UserName = email,
+                Email = email,
+                EmailConfirmed = false,
+                LockoutEnabled = true
+            };
+
+            var temporaryPassword = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(48)) + "aA1!";
+            var userResult = await _userManager.CreateAsync(identityUser, temporaryPassword);
+            if (!userResult.Succeeded)
+                return await RollbackFailureAsync(transaction, identityUser, userResult.Errors.Select(e => e.Description).ToArray(), cancellationToken);
+
+            var roleResult = await _userManager.AddToRoleAsync(identityUser, role);
+            if (!roleResult.Succeeded)
+                return await RollbackFailureAsync(transaction, identityUser, roleResult.Errors.Select(e => e.Description).ToArray(), cancellationToken);
+
+            var employee = new Employee
+            {
+                EmployeeNumber = employeeNumber,
+                FirstName = request.FirstName.Trim(),
+                LastName = request.LastName.Trim(),
+                Email = email,
+                DivisionId = request.DivisionId,
+                Phone = request.Phone.Trim(),
+                DateOfBirth = request.DateOfBirth,
+                IdNumber = request.IdNumber.Trim(),
+                JobTitle = request.JobTitle.Trim(),
+                Department = request.Department.Trim(),
+                ManagerId = request.ManagerId,
+                PayBasis = request.PayBasis.Trim().ToUpperInvariant(),
+                WorkDaysPerWeek = request.WorkDaysPerWeek,
+                OrdinaryHoursPerDay = request.OrdinaryHoursPerDay,
+                OrdinaryHoursPerWeek = request.OrdinaryHoursPerWeek,
+                RestDays = request.WorksRoster ? string.Empty : string.Join(',', request.RestDays.Select(d => d.Trim().ToUpperInvariant()).Distinct()),
+                WorksRoster = request.WorksRoster,
+                AnnualLeaveDays = request.AnnualLeaveDays,
+                EmergencyContactName = request.EmergencyContactName.Trim(),
+                EmergencyContactPhone = request.EmergencyContactPhone.Trim(),
+                BasicSalary = request.BasicSalary,
+                ProbationEndDate = request.ProbationEndDate,
+                StartDate = request.StartDate!.Value,
+                EndDate = request.EndDate,
+                EmploymentType = request.EmploymentType.Trim().ToUpperInvariant(),
+                Status = request.Status.Trim().ToUpperInvariant(),
+                IdentityUserId = identityUser.Id,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _db.Employees.Add(employee);
+            await _db.SaveChangesAsync(cancellationToken);
+
+            var actingUserId = _userManager.GetUserId(actingUser) ?? actingUser.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown";
+            _db.AuditEvents.Add(new AuditEvent
+            {
+                Action = "STAFF_CREATED",
+                ActingUserId = actingUserId,
+                EmployeeId = employee.Id,
+                CreatedAt = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return EmployeeCreationResult.Success(employee.Id);
+        }
+        catch (DbUpdateException ex)
+        {
+            _logger.LogWarning(ex, "Employee creation failed because of a database constraint.");
+            if (identityUser is not null)
+                await _userManager.DeleteAsync(identityUser);
+            await transaction.RollbackAsync(cancellationToken);
+            return EmployeeCreationResult.Failure("The employee could not be saved because a database constraint was violated. Check the employee number and email.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error while creating an employee.");
+            if (identityUser is not null)
+                await _userManager.DeleteAsync(identityUser);
+            await transaction.RollbackAsync(cancellationToken);
+            return EmployeeCreationResult.Failure("The employee could not be created. No changes were saved.");
+        }
+    }
+
+    private async Task<EmployeeCreationResult> RollbackFailureAsync(
+        IDbContextTransaction transaction,
+        ApplicationUser identityUser,
+        string[] errors,
+        CancellationToken cancellationToken)
+    {
+        await _userManager.DeleteAsync(identityUser);
+        await transaction.RollbackAsync(cancellationToken);
+        return errors.Length == 0
+            ? EmployeeCreationResult.Failure("Identity account creation failed.")
+            : EmployeeCreationResult.Failure(errors);
+    }
+}
+using System.ComponentModel.DataAnnotations;
+
+namespace Avemel.HR.Application.Employees;
+
+public sealed record EmployeeCreationRequest
+{
+    public string EmployeeNumber { get; init; } = "";
+    public string FirstName { get; init; } = "";
+    public string LastName { get; init; } = "";
+    public string Email { get; init; } = "";
+    public int? DivisionId { get; init; }
+    public string Phone { get; init; } = "";
+    public DateOnly? DateOfBirth { get; init; }
+    public string IdNumber { get; init; } = "";
+    public string JobTitle { get; init; } = "";
+    public string Department { get; init; } = "";
+    public int? ManagerId { get; init; }
+    public string Role { get; init; } = "STAFF";
+    public string EmploymentType { get; init; } = "PERMANENT";
+    public string PayBasis { get; init; } = "MONTHLY";
+    public decimal BasicSalary { get; init; }
+    public DateOnly? StartDate { get; init; }
+    public DateOnly? ProbationEndDate { get; init; }
+    public string Status { get; init; } = "ACTIVE";
+    public DateOnly? EndDate { get; init; }
+    public int WorkDaysPerWeek { get; init; } = 5;
+    public bool WorksRoster { get; init; }
+    public decimal AnnualLeaveDays { get; init; }
+    public IReadOnlyCollection<string> RestDays { get; init; } = Array.Empty<string>();
+    public decimal OrdinaryHoursPerDay { get; init; }
+    public decimal OrdinaryHoursPerWeek { get; init; }
+    public string EmergencyContactName { get; init; } = "";
+    public string EmergencyContactPhone { get; init; } = "";
+
+    public IReadOnlyList<string> Validate()
+    {
+        var errors = new List<string>();
+        var roles = new[] { "STAFF", "MANAGER", "ADMIN" };
+        var employmentTypes = new[] { "PERMANENT", "FIXED_TERM", "PART_TIME", "CONTRACTOR", "INTERN" };
+        var payBases = new[] { "MONTHLY", "WEEKLY", "HOURLY" };
+        var statuses = new[] { "ACTIVE", "ON_NOTICE", "TERMINATED" };
+        var validRestDays = new[] { "MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN" };
+
+        if (string.IsNullOrWhiteSpace(FirstName)) errors.Add("First name is required.");
+        if (string.IsNullOrWhiteSpace(LastName)) errors.Add("Last name is required.");
+        if (string.IsNullOrWhiteSpace(Email) || !new EmailAddressAttribute().IsValid(Email)) errors.Add("Enter a valid email address.");
+        if (StartDate is null) errors.Add("Start date is required.");
+        if (!roles.Contains(Role, StringComparer.OrdinalIgnoreCase)) errors.Add("Select a valid access level.");
+        if (!employmentTypes.Contains(EmploymentType, StringComparer.OrdinalIgnoreCase)) errors.Add("Select a valid employment type.");
+        if (!payBases.Contains(PayBasis, StringComparer.OrdinalIgnoreCase)) errors.Add("Select a valid pay basis.");
+        if (!statuses.Contains(Status, StringComparer.OrdinalIgnoreCase)) errors.Add("Select a valid employment status.");
+        if (WorkDaysPerWeek is not (5 or 6)) errors.Add("Working days must be five or six per week.");
+        if (OrdinaryHoursPerDay <= 0 || OrdinaryHoursPerDay > 24) errors.Add("Ordinary hours per day must be greater than zero and at most 24.");
+        if (OrdinaryHoursPerWeek <= 0 || OrdinaryHoursPerWeek > 45) errors.Add("Ordinary hours per week must be greater than zero and at most 45.");
+        if (BasicSalary < 0) errors.Add("Basic pay cannot be negative.");
+
+        var minimumLeave = WorkDaysPerWeek == 6 ? 18 : 15;
+        if (AnnualLeaveDays < 0 || AnnualLeaveDays > 60) errors.Add("Annual leave must be between the standard minimum and 60 days.");
+        if (AnnualLeaveDays > 0 && AnnualLeaveDays < minimumLeave) errors.Add($"Annual leave cannot be below {minimumLeave} days for a {WorkDaysPerWeek}-day week.");
+
+        var restDayList = RestDays.Select(day => day.Trim().ToUpperInvariant()).ToList();
+        if (WorksRoster && restDayList.Count != 0) errors.Add("Rotating roster employees cannot have fixed rest days.");
+        if (restDayList.Count != restDayList.Distinct(StringComparer.Ordinal).Count()) errors.Add("Rest days cannot contain duplicates.");
+        if (restDayList.Any(day => !validRestDays.Contains(day))) errors.Add("Rest days must use valid weekday codes.");
+        if (!WorksRoster && restDayList.Count != 0 && restDayList.Count != 7 - WorkDaysPerWeek) errors.Add($"A {WorkDaysPerWeek}-day week must have {7 - WorkDaysPerWeek} fixed rest day(s).");
+
+        if (ProbationEndDate is not null && StartDate is not null && ProbationEndDate < StartDate) errors.Add("Probation end date cannot be before the start date.");
+        if (EndDate is not null && StartDate is not null && EndDate < StartDate) errors.Add("Last day cannot be before the start date.");
+        if (Status == "TERMINATED" && EndDate is null) errors.Add("A terminated employee must have a last day.");
+        if (Status != "TERMINATED" && EndDate is not null) errors.Add("Only terminated employees may have a last day.");
+
+        return errors;
+    }
+}
+using System.Security.Claims;
+
+namespace Avemel.HR.Application.Employees;
+
+public interface IEmployeeCreationService
+{
+    Task<EmployeeCreationResult> CreateAsync(
+        EmployeeCreationRequest request,
+        ClaimsPrincipal actingUser,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed record EmployeeCreationResult(
+    bool Succeeded,
+    int? EmployeeId,
+    IReadOnlyList<string> Errors)
+{
+    public static EmployeeCreationResult Success(int employeeId) => new(true, employeeId, Array.Empty<string>());
+    public static EmployeeCreationResult Failure(params string[] errors) => new(false, null, errors);
+}
+namespace Avemel.HR.Infrastructure.Persistence;
+
+public sealed class AuditEvent
+{
+    public long Id { get; set; }
+    public string Action { get; set; } = string.Empty;
+    public string ActingUserId { get; set; } = string.Empty;
+    public int? EmployeeId { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}

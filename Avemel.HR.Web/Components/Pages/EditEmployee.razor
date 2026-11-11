@@ -1,0 +1,256 @@
+﻿@page "/admin/staff/{Id:int}/edit"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "ADMIN")]
+
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using global::Avemel.HR.Application.Employees
+@using global::Avemel.HR.Infrastructure.Persistence
+@using global::Avemel.HR.Web.Components.Avemel
+@using global::Avemel.HR.Web.Models
+
+@layout global::Avemel.HR.Web.Components.Avemel.AdminLayout
+
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject IEmployeeUpdateService EmployeeUpdateService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+
+<PageTitle>Edit employee · Avemel</PageTitle>
+
+<div class="add-employee-page">
+
+    <div class="add-employee-header">
+        <div>
+            <h1>Edit an employee</h1>
+            <p>
+                Update employee information, employment details,
+                working arrangements and next of kin.
+            </p>
+        </div>
+
+        <a href="@($"/admin/staff/{Id}")" class="btn-secondary">
+            Back
+        </a>
+    </div>
+
+    @if (Loading)
+    {
+        <p>Loading employee information...</p>
+    }
+    else if (NotFound)
+    {
+        <div class="alert alert-danger">
+            Employee not found.
+        </div>
+
+        <a href="/admin/staff" class="btn-secondary">
+            Back to Staff
+        </a>
+    }
+    else
+    {
+        <EmployeeForm Model="@Model"
+                      Divisions="@DivisionOptions"
+                      Managers="@ManagerOptions"
+                      Departments="@DepartmentOptions"
+                      OnSubmit="SaveEmployeeAsync"
+                      IsSaving="@Saving"
+                      IsEditMode="true"
+                      EmployeeId="@Id"
+                      ErrorMessage="@ErrorMessage" />
+    }
+
+</div>
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private bool Loading = true;
+    private bool NotFound;
+    private bool Saving;
+
+    private string ErrorMessage = "";
+
+    private EmployeeFormModel Model = new();
+
+    private List<EmployeeForm.DivisionOption> DivisionOptions = new();
+    private List<EmployeeForm.ManagerOption> ManagerOptions = new();
+    private List<string> DepartmentOptions = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        Loading = true;
+        NotFound = false;
+        ErrorMessage = "";
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        var employee = await db.Employees
+            .AsNoTracking()
+            .FirstOrDefaultAsync(e => e.Id == Id);
+
+        if (employee is null)
+        {
+            NotFound = true;
+            Loading = false;
+            return;
+        }
+
+        DivisionOptions = await db.Divisions
+            .AsNoTracking()
+            .Where(d => d.Active || d.Id == employee.DivisionId)
+            .OrderBy(d => d.SortOrder)
+            .ThenBy(d => d.Name)
+            .Select(d => new EmployeeForm.DivisionOption
+            {
+                Id = d.Id,
+                Name = d.Name
+            })
+            .ToListAsync();
+
+        ManagerOptions = await db.Employees
+            .AsNoTracking()
+            .Where(e => e.Id != Id &&
+                        (e.Status != "TERMINATED" ||
+                         e.Id == employee.ManagerId))
+            .OrderBy(e => e.FirstName)
+            .ThenBy(e => e.LastName)
+            .Select(e => new EmployeeForm.ManagerOption
+            {
+                Id = e.Id,
+                Name = e.FirstName + " " + e.LastName
+            })
+            .ToListAsync();
+
+        DepartmentOptions = await db.Employees
+            .AsNoTracking()
+            .Where(e => e.Department != "")
+            .Select(e => e.Department)
+            .Distinct()
+            .OrderBy(d => d)
+            .ToListAsync();
+
+        var role = "STAFF";
+
+        if (!string.IsNullOrWhiteSpace(employee.IdentityUserId))
+        {
+            var assignedRole = await (
+                from userRole in db.UserRoles
+                join identityRole in db.Roles
+                    on userRole.RoleId equals identityRole.Id
+                where userRole.UserId == employee.IdentityUserId
+                select identityRole.Name
+            ).FirstOrDefaultAsync();
+
+            if (!string.IsNullOrWhiteSpace(assignedRole))
+            {
+                role = assignedRole;
+            }
+        }
+
+        Model = new EmployeeFormModel
+        {
+            EmployeeNumber = employee.EmployeeNumber,
+            FirstName = employee.FirstName,
+            LastName = employee.LastName,
+            Email = employee.Email,
+            DivisionId = employee.DivisionId,
+
+            Phone = employee.Phone,
+            DateOfBirth = employee.DateOfBirth,
+            IdNumber = employee.IdNumber,
+
+            JobTitle = employee.JobTitle,
+            Department = employee.Department,
+            ManagerId = employee.ManagerId,
+
+            Role = role,
+            EmploymentType = employee.EmploymentType,
+            PayBasis = employee.PayBasis,
+            BasicSalary = employee.BasicSalary,
+
+            StartDate = employee.StartDate,
+            ProbationEndDate = employee.ProbationEndDate,
+            Status = employee.Status,
+            EndDate = employee.EndDate,
+
+            WorkDaysPerWeek = employee.WorkDaysPerWeek,
+            WorksRoster = employee.WorksRoster,
+            AnnualLeaveDays = employee.AnnualLeaveDays,
+            RestDays = employee.RestDays,
+
+            OrdinaryHoursPerDay = employee.OrdinaryHoursPerDay,
+            OrdinaryHoursPerWeek = employee.OrdinaryHoursPerWeek,
+
+            EmergencyContactName = employee.EmergencyContactName,
+            EmergencyContactPhone = employee.EmergencyContactPhone
+        };
+
+        Loading = false;
+    }
+
+    private async Task SaveEmployeeAsync(EmployeeFormModel model)
+    {
+        if (Saving)
+            return;
+
+        Saving = true;
+        ErrorMessage = "";
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var request = new EmployeeUpdateRequest
+            {
+                EmployeeId = Id,
+                EmployeeNumber = model.EmployeeNumber,
+                FirstName = model.FirstName,
+                LastName = model.LastName,
+                Email = model.Email,
+                DivisionId = model.DivisionId,
+                Phone = model.Phone,
+                DateOfBirth = model.DateOfBirth,
+                IdNumber = model.IdNumber,
+                JobTitle = model.JobTitle,
+                Department = model.Department,
+                ManagerId = model.ManagerId,
+                Role = model.Role,
+                EmploymentType = model.EmploymentType,
+                PayBasis = model.PayBasis,
+                BasicSalary = model.BasicSalary ?? 0m,
+                StartDate = model.StartDate,
+                ProbationEndDate = model.ProbationEndDate,
+                Status = model.Status,
+                EndDate = model.EndDate,
+                WorkDaysPerWeek = model.WorkDaysPerWeek,
+                WorksRoster = model.WorksRoster,
+                AnnualLeaveDays = model.AnnualLeaveDays ?? 0m,
+                RestDays = model.RestDays.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+                OrdinaryHoursPerDay = model.OrdinaryHoursPerDay,
+                OrdinaryHoursPerWeek = model.OrdinaryHoursPerWeek,
+                EmergencyContactName = model.EmergencyContactName,
+                EmergencyContactPhone = model.EmergencyContactPhone
+            };
+
+            var result = await EmployeeUpdateService.UpdateAsync(request, authState.User);
+            if (result.Succeeded)
+            {
+                Navigation.NavigateTo($"/admin/staff/{Id}");
+                return;
+            }
+
+            ErrorMessage = string.Join(" ", result.Errors);
+        }
+        catch (Exception)
+        {
+            ErrorMessage = "The employee could not be updated. No changes were saved.";
+        }
+        finally
+        {
+            Saving = false;
+        }
+    }
+}
+

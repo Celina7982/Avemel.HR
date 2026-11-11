@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="Avemel.HR.Application/Avemel.HR.Application.csproj" />
+  <Project Path="Avemel.HR.Domain/Avemel.HR.Domain.csproj" />
+  <Project Path="Avemel.HR.Infrastructure/Avemel.HR.Infrastructure.csproj" />
+  <Project Path="Avemel.HR.Tests/Avemel.HR.Tests.csproj" />
+  <Project Path="Avemel.HR.Web/Avemel.HR.Web.csproj" />
+</Solution>

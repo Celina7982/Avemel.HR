@@ -1,0 +1,481 @@
+﻿@using Microsoft.AspNetCore.Components
+@using System.Globalization
+@using global::Avemel.HR.Web.Models
+
+<EditForm Model="Model" OnValidSubmit="SubmitAsync" class="employee-form">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <!-- IDENTITY -->
+    <section class="card p-4">
+        <h2 class="mb-3 text-sm font-semibold text-ink-800">Identity</h2>
+
+        <div class="grid gap-4 sm:grid-cols-2">
+            <div>
+                <label class="label" for="employeeNumber">Employee number</label>
+                <input id="employeeNumber" class="field"
+                       @bind="Model.EmployeeNumber" />
+            </div>
+
+            <div>
+                <label class="label" for="divisionId">Division</label>
+                <select id="divisionId" class="field" @bind="Model.DivisionId">
+                    <option value="">Not assigned</option>
+                    @foreach (var division in Divisions)
+                    {
+                        <option value="@division.Id">@division.Name</option>
+                    }
+                </select>
+            </div>
+
+            <div>
+                <label class="label" for="firstName">First name</label>
+                <input id="firstName" class="field" @bind="Model.FirstName" />
+            </div>
+
+            <div>
+                <label class="label" for="lastName">Last name</label>
+                <input id="lastName" class="field" @bind="Model.LastName" />
+            </div>
+
+            <div>
+                <label class="label" for="email">Email address</label>
+                <input id="email" type="email" class="field"
+                       @bind="Model.Email" />
+                <p class="mt-1 text-xs text-ink-500">
+                    Leave a placeholder @@avemel.local address for staff
+                    with no mailbox — they sign in with their employee number.
+                </p>
+            </div>
+
+            <div>
+                <label class="label" for="phone">Phone</label>
+                <input id="phone" type="tel" class="field" @bind="Model.Phone" />
+            </div>
+
+            <div>
+                <label class="label" for="dateOfBirth">Date of birth</label>
+                <input id="dateOfBirth" type="date" class="field"
+                       @bind="Model.DateOfBirth" />
+                <p class="mt-1 text-xs text-ink-500">
+                    Drives the birthday calendar.
+                </p>
+            </div>
+
+            <div>
+                <label class="label" for="idNumber">Identity number</label>
+                <input id="idNumber" class="field" @bind="Model.IdNumber" />
+            </div>
+        </div>
+    </section>
+
+    <!-- THE JOB -->
+    <section class="card p-4">
+        <h2 class="mb-3 text-sm font-semibold text-ink-800">The job</h2>
+
+        <div class="grid gap-4 sm:grid-cols-2">
+            <div>
+                <label class="label" for="jobTitle">Job title</label>
+                <input id="jobTitle" class="field" @bind="Model.JobTitle" />
+            </div>
+
+            <div>
+                <label class="label" for="department">Department</label>
+                <input id="department" class="field"
+                       list="departments" @bind="Model.Department" />
+                <datalist id="departments">
+                    @foreach (var department in Departments)
+                    {
+                        <option value="@department"></option>
+                    }
+                </datalist>
+            </div>
+
+            <div>
+                <label class="label" for="managerId">Reports to</label>
+                <select id="managerId" class="field" @bind="Model.ManagerId">
+                    <option value="">Nobody</option>
+                    @foreach (var manager in Managers)
+                    {
+                        <option value="@manager.Id">@manager.Name</option>
+                    }
+                </select>
+            </div>
+
+            <div>
+                <label class="label" for="role">Access level</label>
+                <select id="role" class="field" @bind="Model.Role">
+                    <option value="STAFF">Staff — their own records only</option>
+                    <option value="MANAGER">Manager — back office, approves leave and loans</option>
+                    <option value="ADMIN">Administrator — everything, including settings</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="label" for="employmentType">Employment type</label>
+                <select id="employmentType" class="field" @bind="Model.EmploymentType">
+                    <option value="PERMANENT">Permanent</option>
+                    <option value="FIXED_TERM">Fixed term</option>
+                    <option value="PART_TIME">Part time</option>
+                    <option value="CONTRACTOR">Contractor</option>
+                    <option value="INTERN">Intern</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="label" for="payBasis">Paid</label>
+                <select id="payBasis" class="field" @bind="Model.PayBasis">
+                    <option value="MONTHLY">Monthly</option>
+                    <option value="WEEKLY">Weekly</option>
+                    <option value="HOURLY">Hourly</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="label" for="basicSalary">Basic pay</label>
+                <input id="basicSalary" type="number" step="0.01"
+                       class="field" @bind="Model.BasicSalary" />
+                <p class="mt-1 text-xs text-ink-500">
+                    Used to check loan affordability. Leave blank if not applicable.
+                </p>
+            </div>
+
+            <div>
+                <label class="label" for="startDate">Start date</label>
+                <input id="startDate" type="date" class="field"
+                       @bind="Model.StartDate" />
+            </div>
+
+            <div>
+                <label class="label" for="probationEndDate">Probation ends</label>
+                <input id="probationEndDate" type="date" class="field"
+                       @bind="Model.ProbationEndDate" />
+                <p class="mt-1 text-xs text-ink-500">
+                    Flagged on the dashboard 45 days before it arrives.
+                </p>
+            </div>
+
+            <div>
+                <label class="label" for="status">Status</label>
+                <select id="status" class="field" @bind="Model.Status">
+                    <option value="ACTIVE">Active</option>
+                    <option value="ON_NOTICE">On notice</option>
+                    <option value="TERMINATED">Left the company</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="label" for="endDate">Last day</label>
+                <input id="endDate" type="date" class="field"
+                       @bind="Model.EndDate" />
+                <p class="mt-1 text-xs text-ink-500">
+                    For fixed-term contracts and leavers.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- HOURS OF WORK -->
+    <section class="card p-4">
+        <h2 class="mb-1 text-sm font-semibold text-ink-800">
+            Hours of work
+        </h2>
+
+        <p class="mb-3 text-xs text-ink-500">
+            The working week sets their leave entitlement.
+            <strong>Which</strong> days they are off decides how a leave
+            request is costed — we work seven days, so five days a week
+            does not mean Monday to Friday. Ordinary hours are what
+            the attendance register measures a day against; anything
+            beyond them reads as overtime.
+        </p>
+
+        <div class="grid gap-4 sm:grid-cols-3">
+            <div>
+                <label class="label" for="workDaysPerWeek">Working days</label>
+                <select id="workDaysPerWeek" class="field"
+                        value="@Model.WorkDaysPerWeek"
+                        @onchange="ChangeWorkDays">
+                    <option value="5">Five days a week</option>
+                    <option value="6">Six days a week</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="label" for="annualLeaveDays">
+                    Annual leave days a year
+                </label>
+                <input id="annualLeaveDays" type="number"
+                       step="0.5" min="0" class="field"
+                       placeholder="@($"{StandardAnnual} (standard)")"
+                       @bind="Model.AnnualLeaveDays" />
+
+                @if (BelowAnnualFloor)
+                {
+                    <p class="mt-1 text-xs text-amber-700">
+                        The BCEA requires @StandardAnnual days on a
+                        @Model.WorkDaysPerWeek-day week. Leave this blank
+                        for the standard.
+                    </p>
+                }
+                else if (Model.AnnualLeaveDays.HasValue && Model.AnnualLeaveDays.Value > 0)
+                {
+                    <p class="mt-1 text-xs text-ink-500">
+                        Agreed personally. The standard for a
+                        @Model.WorkDaysPerWeek-day week is @StandardAnnual;
+                        they will carry up to @(Model.AnnualLeaveDays.Value * 2).
+                    </p>
+                }
+                else
+                {
+                    <p class="mt-1 text-xs text-ink-500">
+                        Blank uses the standard @StandardAnnual days.
+                        Set it only where a contract is better than that.
+                    </p>
+                }
+            </div>
+
+            <div class="sm:col-span-3">
+                <label class="roster-option">
+                    <input type="checkbox"
+                           checked="@Model.WorksRoster"
+                           @onchange="ToggleRoster" />
+                    <span>
+                        <strong>Works a rotating roster</strong>
+                        <span class="roster-description">
+                            For staff on hours and shifts, whose day off
+                            moves week to week. Their leave is charged as
+                            @Model.WorkDaysPerWeek sevenths of the days it covers,
+                            since there is no set day to leave out.
+                        </span>
+                    </span>
+                </label>
+            </div>
+
+            @if (!Model.WorksRoster)
+            {
+                <div class="sm:col-span-3">
+                    <span class="label">Days off</span>
+
+                    <div class="rest-day-options">
+                        @foreach (var day in Weekdays)
+                        {
+                            <label class="rest-day-chip @(RestDays.Contains(day.Code) ? "selected" : "")">
+                                <input type="checkbox"
+                                       checked="@RestDays.Contains(day.Code)"
+                                       @onchange="e => ToggleRestDay(day.Code, e.Value is true)" />
+                                @day.Label
+                            </label>
+                        }
+                    </div>
+
+                    @if (RestDays.Count == 0)
+                    {
+                        <p class="mt-1 text-xs text-ink-500">
+                            Not recorded. Leave is costed as though they
+                            are off @(Model.WorkDaysPerWeek == 6 ? "on Sundays" : "at the weekend")
+                            — set the real days to be sure.
+                        </p>
+                    }
+                    else if (RestDays.Count != 7 - Model.WorkDaysPerWeek)
+                    {
+                        <p class="mt-1 text-xs text-amber-700">
+                            @Model.WorkDaysPerWeek days a week means
+                            @(7 - Model.WorkDaysPerWeek) day(s) off,
+                            but @RestDays.Count are ticked.
+                        </p>
+                    }
+                    else
+                    {
+                        <p class="mt-1 text-xs text-ink-500">
+                            Their leave requests will not be charged for these days.
+                        </p>
+                    }
+                </div>
+            }
+
+            <div>
+                <label class="label" for="ordinaryHoursPerDay">
+                    Ordinary hours a day
+                </label>
+                <input id="ordinaryHoursPerDay" type="number"
+                       step="0.25" min="0" max="24"
+                       @bind="Model.OrdinaryHoursPerDay"
+                       required />
+                <p class="mt-1 text-xs text-ink-500">
+                    Eight hours represents a standard working day. A six-day
+                    schedule may include shorter days while still totaling the
+                    weekly hours.
+                </p>
+            </div>
+
+            <div>
+                <label class="label" for="ordinaryHoursPerWeek">
+                    Ordinary hours a week
+                </label>
+                <input id="ordinaryHoursPerWeek" type="number"
+                       step="0.25" min="0" max="168"
+                       @bind="Model.OrdinaryHoursPerWeek"
+                       required />
+            </div>
+        </div>
+
+        @if (Model.OrdinaryHoursPerWeek > 45)
+        {
+            <div class="alert alert-danger mt-3">
+                Ordinary hours cannot exceed 45 a week.
+                Anything beyond that is overtime and is paid at a premium.
+            </div>
+        }
+        else if (Model.OrdinaryHoursPerDay > 0 &&
+                 Math.Abs(Model.OrdinaryHoursPerDay * Model.WorkDaysPerWeek -
+                          Model.OrdinaryHoursPerWeek) > 0.01m)
+        {
+            <div class="alert alert-warning mt-3">
+                @Model.OrdinaryHoursPerDay hours across @Model.WorkDaysPerWeek days
+                comes to @(Model.OrdinaryHoursPerDay * Model.WorkDaysPerWeek)
+                a week, not @Model.OrdinaryHoursPerWeek.
+                That is fine if the week is deliberately uneven —
+                a short Saturday, say — but worth a second look.
+            </div>
+        }
+    </section>
+
+    <!-- NEXT OF KIN -->
+    <section class="card p-4">
+        <h2 class="mb-3 text-sm font-semibold text-ink-800">
+            Next of kin
+        </h2>
+
+        <div class="grid gap-4 sm:grid-cols-2">
+            <div>
+                <label class="label" for="emergencyContactName">
+                    Emergency contact
+                </label>
+                <input id="emergencyContactName" class="field"
+                       @bind="Model.EmergencyContactName" />
+            </div>
+
+            <div>
+                <label class="label" for="emergencyContactPhone">
+                    Emergency contact number
+                </label>
+                <input id="emergencyContactPhone" type="tel"
+                       class="field" @bind="Model.EmergencyContactPhone" />
+            </div>
+        </div>
+    </section>
+
+    <!-- ACTIONS -->
+    <div class="employee-form-actions">
+        <a href="@(IsEditMode && EmployeeId.HasValue
+                       ? $"/admin/staff/{EmployeeId.Value}"
+                       : "/admin/staff")"
+           class="btn-secondary">
+            Cancel
+        </a>
+
+        <button type="submit" class="btn-primary" disabled="@IsSaving">
+            @(IsSaving
+                ? (IsEditMode ? "Saving..." : "Creating...")
+                : (IsEditMode ? "Save changes" : "Create the employee"))
+        </button>
+    </div>
+    @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <div class="alert alert-danger mt-3">@ErrorMessage</div>
+    }
+</EditForm>
+
+@code {
+    [Parameter]
+    public List<DivisionOption> Divisions { get; set; } = new();
+
+    [Parameter]
+    public List<ManagerOption> Managers { get; set; } = new();
+
+    [Parameter]
+    public List<string> Departments { get; set; } = new();
+
+    [Parameter, EditorRequired]
+    public EmployeeFormModel Model { get; set; } = new();
+
+    [Parameter]
+    public EventCallback<EmployeeFormModel> OnSubmit { get; set; }
+
+    [Parameter]
+    public bool IsSaving { get; set; }
+
+    [Parameter]
+    public string ErrorMessage { get; set; } = "";
+
+    [Parameter]
+    public bool IsEditMode { get; set; }
+
+    [Parameter]
+    public int? EmployeeId { get; set; }
+
+    private int StandardAnnual => Model.WorkDaysPerWeek == 6 ? 18 : 15;
+
+    private bool BelowAnnualFloor =>
+        Model.AnnualLeaveDays.HasValue &&
+        Model.AnnualLeaveDays.Value > 0 &&
+        Model.AnnualLeaveDays.Value < StandardAnnual;
+
+    private HashSet<string> RestDays => Model.RestDays
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly (string Code, string Label)[] Weekdays =
+    {
+        ("MON", "Mon"), ("TUE", "Tue"), ("WED", "Wed"),
+        ("THU", "Thu"), ("FRI", "Fri"), ("SAT", "Sat"),
+        ("SUN", "Sun")
+    };
+
+    private void ChangeWorkDays(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var days))
+            return;
+
+        Model.WorkDaysPerWeek = days == 6 ? 6 : 5;
+        Model.OrdinaryHoursPerDay = Model.WorkDaysPerWeek == 6 ? 8m : 9m;
+        Model.OrdinaryHoursPerWeek = 45m;
+    }
+
+    private void ToggleRestDay(string code, bool selected)
+    {
+        var restDays = RestDays;
+        if (selected)
+            restDays.Add(code);
+        else
+            restDays.Remove(code);
+
+        Model.RestDays = string.Join(',', restDays.OrderBy(day => Array.IndexOf(Weekdays.Select(w => w.Code).ToArray(), day)));
+    }
+
+    private void ToggleRoster(ChangeEventArgs args)
+    {
+        Model.WorksRoster = args.Value is true || string.Equals(args.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+        if (Model.WorksRoster)
+            Model.RestDays = string.Empty;
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (!IsSaving)
+            await OnSubmit.InvokeAsync(Model);
+    }
+
+    public class DivisionOption
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+    }
+
+    public class ManagerOption
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+    }
+}

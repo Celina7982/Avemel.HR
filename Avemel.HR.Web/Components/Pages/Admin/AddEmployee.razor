@@ -1,0 +1,163 @@
+﻿@page "/admin/staff/new"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "ADMIN")]
+
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Authorization
+@using global::Avemel.HR.Application.Employees
+@using global::Avemel.HR.Infrastructure.Persistence
+@using global::Avemel.HR.Web.Components.Avemel
+@using global::Avemel.HR.Web.Models
+
+@layout global::Avemel.HR.Web.Components.Avemel.AdminLayout
+
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject IEmployeeCreationService EmployeeCreationService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+
+<PageTitle>Add an employee · Avemel</PageTitle>
+
+<div class="add-employee-page">
+
+    <div class="add-employee-header">
+        <div>
+            <h1>Add an employee</h1>
+            <p>
+                Creates their account and starts their leave
+                accrual from the start date.
+            </p>
+        </div>
+
+        <a href="/admin/staff" class="btn-secondary">
+            Back
+        </a>
+    </div>
+
+    @if (Loading)
+    {
+        <p>Loading employee form...</p>
+    }
+    else
+    {
+        <EmployeeForm Model="@Model"
+                      Divisions="@DivisionOptions"
+                      Managers="@ManagerOptions"
+                      Departments="@DepartmentOptions"
+                      OnSubmit="CreateEmployeeAsync"
+                      IsSaving="@Saving"
+                      ErrorMessage="@ErrorMessage" />
+    }
+
+</div>
+
+@code {
+    private bool Loading = true;
+
+    private List<EmployeeForm.DivisionOption> DivisionOptions = new();
+    private List<EmployeeForm.ManagerOption> ManagerOptions = new();
+    private List<string> DepartmentOptions = new();
+    private EmployeeFormModel Model = new();
+    private bool Saving;
+    private string ErrorMessage = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        DivisionOptions = await db.Divisions
+            .AsNoTracking()
+            .Where(d => d.Active)
+            .OrderBy(d => d.SortOrder)
+            .ThenBy(d => d.Name)
+            .Select(d => new EmployeeForm.DivisionOption
+            {
+                Id = d.Id,
+                Name = d.Name
+            })
+            .ToListAsync();
+
+        ManagerOptions = await db.Employees
+            .AsNoTracking()
+            .Where(e => e.Status != "TERMINATED")
+            .OrderBy(e => e.FirstName)
+            .ThenBy(e => e.LastName)
+            .Select(e => new EmployeeForm.ManagerOption
+            {
+                Id = e.Id,
+                Name = e.FirstName + " " + e.LastName
+            })
+            .ToListAsync();
+
+        DepartmentOptions = await db.Employees
+            .AsNoTracking()
+            .Where(e => e.Department != "")
+            .Select(e => e.Department)
+            .Distinct()
+            .OrderBy(d => d)
+            .ToListAsync();
+
+        Loading = false;
+    }
+
+    private async Task CreateEmployeeAsync(EmployeeFormModel model)
+    {
+        if (Saving)
+            return;
+
+        Saving = true;
+        ErrorMessage = "";
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var request = new EmployeeCreationRequest
+            {
+                EmployeeNumber = model.EmployeeNumber,
+                FirstName = model.FirstName,
+                LastName = model.LastName,
+                Email = model.Email,
+                DivisionId = model.DivisionId,
+                Phone = model.Phone,
+                DateOfBirth = model.DateOfBirth,
+                IdNumber = model.IdNumber,
+                JobTitle = model.JobTitle,
+                Department = model.Department,
+                ManagerId = model.ManagerId,
+                Role = model.Role,
+                EmploymentType = model.EmploymentType,
+                PayBasis = model.PayBasis,
+                BasicSalary = model.BasicSalary ?? 0m,
+                StartDate = model.StartDate,
+                ProbationEndDate = model.ProbationEndDate,
+                Status = model.Status,
+                EndDate = model.EndDate,
+                WorkDaysPerWeek = model.WorkDaysPerWeek,
+                WorksRoster = model.WorksRoster,
+                AnnualLeaveDays = model.AnnualLeaveDays ?? 0m,
+                RestDays = model.RestDays.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+                OrdinaryHoursPerDay = model.OrdinaryHoursPerDay,
+                OrdinaryHoursPerWeek = model.OrdinaryHoursPerWeek,
+                EmergencyContactName = model.EmergencyContactName,
+                EmergencyContactPhone = model.EmergencyContactPhone
+            };
+
+            var result = await EmployeeCreationService.CreateAsync(request, authState.User);
+            if (result.Succeeded)
+            {
+                Navigation.NavigateTo("/admin/staff?created=true");
+                return;
+            }
+
+            ErrorMessage = string.Join(" ", result.Errors);
+        }
+        catch (Exception)
+        {
+            ErrorMessage = "The employee could not be created. No changes were saved.";
+        }
+        finally
+        {
+            Saving = false;
+        }
+    }
+}

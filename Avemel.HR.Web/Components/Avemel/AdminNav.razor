@@ -1,0 +1,38 @@
+﻿@using Microsoft.AspNetCore.Components.Routing
+
+<aside class="av-admin-sidebar">
+    <div class="av-sidebar-brand">
+        <strong>AVEMEL GROUP</strong>
+        <span>HR Intranet</span>
+    </div>
+
+    <nav aria-label="Admin navigation">
+        <div class="av-nav-heading">Overview</div>
+        <NavLink href="/admin" Match="NavLinkMatch.All">Dashboard</NavLink>
+
+        <div class="av-nav-heading">Daily</div>
+        <NavLink href="/admin/attendance">Attendance register</NavLink>
+        <NavLink href="/admin/calendar">Leave calendar</NavLink>
+
+        <div class="av-nav-heading">Requests</div>
+        <NavLink href="/admin/leave">Leave requests</NavLink>
+        <NavLink href="/admin/loans">Loans and advances</NavLink>
+
+        <div class="av-nav-heading">People</div>
+        <NavLink href="/admin/staff">Staff directory</NavLink>
+        <NavLink href="/admin/registrations">New registrations</NavLink>
+        <NavLink href="/admin/take-on">Take-on forms</NavLink>
+        <NavLink href="/admin/balances">Leave balances</NavLink>
+        <NavLink href="/admin/documents">HR documents</NavLink>
+
+        <div class="av-nav-heading">Company</div>
+        <NavLink href="/staff/messages">Messages</NavLink>
+        <NavLink href="/admin/announcements">Announcements</NavLink>
+        <NavLink href="/admin/events">Company calendar</NavLink>
+
+        <AuthorizeView Roles="ADMIN">
+            <div class="av-nav-heading">Administration</div>
+            <NavLink href="/admin/settings">Settings</NavLink>
+        </AuthorizeView>
+    </nav>
+</aside>

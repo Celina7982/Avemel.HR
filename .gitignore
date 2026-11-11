@@ -1,0 +1,45 @@
+# .NET build output
+**/bin/
+**/obj/
+**/TestResults/
+artifacts/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Local configuration and secrets
+**/appsettings.Development.json
+**/appsettings.Local.json
+**/secrets.json
+.env
+.env.*
+!.env.example
+
+# Local database files
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.bak
+*.dump
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+
+# IDE settings
+.idea/
+.vscode/
+
+# OS files
+Thumbs.db
+.DS_StoreEmployeeUpdateReference.txt
+pending-migration.sql
+Avemel.H.R.Web/
+Avemel.H.R.Web/

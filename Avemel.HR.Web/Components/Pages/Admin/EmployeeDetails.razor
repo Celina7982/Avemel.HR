@@ -1,0 +1,128 @@
+﻿@page "/admin/staff/{Id:int}"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "ADMIN,MANAGER")]
+
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using global::Avemel.HR.Domain.Entities
+@using global::Avemel.HR.Infrastructure.Persistence
+
+@layout global::Avemel.HR.Web.Components.Avemel.AdminLayout
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+
+<PageTitle>Employee Details - Avemel HR</PageTitle>
+
+<div class="employee-details-page">
+
+    @if (loading)
+    {
+        <p>Loading employee...</p>
+    }
+    else if (employee is null)
+    {
+        <h1>Employee not found</h1>
+        <p>The requested employee does not exist.</p>
+        <a href="/admin/staff">Back to Staff</a>
+    }
+    else
+    {
+        <div class="employee-details-header">
+            <div>
+                <h1>@employee.FirstName @employee.LastName</h1>
+                <p>@employee.EmployeeNumber</p>
+            </div>
+
+            <div class="employee-details-actions">
+                <a href="/admin/staff" class="btn btn-outline-secondary">
+                    Back to Staff
+                </a>
+                <AuthorizeView Roles="ADMIN">
+                    <Authorized>
+                        <a href="@($"/admin/staff/{employee.Id}/edit")"
+                           class="btn btn-primary">
+                            Edit Employee
+                        </a>
+                    </Authorized>
+                </AuthorizeView>
+            </div>
+        </div>
+
+        <section class="employee-details-card">
+            <h2>Identity</h2>
+            <dl class="employee-details-grid">
+                <div><dt>Employee number</dt><dd>@employee.EmployeeNumber</dd></div>
+                <div><dt>Division</dt><dd>@(employee.Division?.Name ?? "Unassigned")</dd></div>
+                <div><dt>First name</dt><dd>@employee.FirstName</dd></div>
+                <div><dt>Last name</dt><dd>@employee.LastName</dd></div>
+                <div><dt>Email address</dt><dd>@employee.Email</dd></div>
+                <div><dt>Phone</dt><dd>@Display(employee.Phone)</dd></div>
+                <div><dt>Date of birth</dt><dd>@DisplayDate(employee.DateOfBirth)</dd></div>
+            </dl>
+        </section>
+
+        <section class="employee-details-card">
+            <h2>The job</h2>
+            <dl class="employee-details-grid">
+                <div><dt>Job title</dt><dd>@Display(employee.JobTitle)</dd></div>
+                <div><dt>Department</dt><dd>@Display(employee.Department)</dd></div>
+                <div><dt>Reports to</dt><dd>@(employee.Manager is null ? "Nobody" : $"{employee.Manager.FirstName} {employee.Manager.LastName}")</dd></div>
+                <div><dt>Employment type</dt><dd>@employee.EmploymentType</dd></div>
+                <div><dt>Paid</dt><dd>@employee.PayBasis</dd></div>
+                <div><dt>Start date</dt><dd>@employee.StartDate.ToString("dd MMM yyyy")</dd></div>
+                <div><dt>Probation ends</dt><dd>@DisplayDate(employee.ProbationEndDate)</dd></div>
+                <div><dt>Status</dt><dd>@employee.Status</dd></div>
+                <div><dt>Last day</dt><dd>@DisplayDate(employee.EndDate)</dd></div>
+            </dl>
+        </section>
+
+        <section class="employee-details-card">
+            <h2>Hours of work</h2>
+            <dl class="employee-details-grid">
+                <div><dt>Working days per week</dt><dd>@employee.WorkDaysPerWeek</dd></div>
+                <div><dt>Ordinary hours per day</dt><dd>@employee.OrdinaryHoursPerDay</dd></div>
+                <div><dt>Ordinary hours per week</dt><dd>@employee.OrdinaryHoursPerWeek</dd></div>
+                <div><dt>Annual leave days</dt><dd>@employee.AnnualLeaveDays</dd></div>
+                <div><dt>Rotating roster</dt><dd>@(employee.WorksRoster ? "Yes" : "No")</dd></div>
+                <div><dt>Rest days</dt><dd>@Display(employee.RestDays)</dd></div>
+            </dl>
+        </section>
+
+        <section class="employee-details-card">
+            <h2>Next of kin</h2>
+            <dl class="employee-details-grid">
+                <div><dt>Emergency contact</dt><dd>@Display(employee.EmergencyContactName)</dd></div>
+                <div><dt>Emergency contact number</dt><dd>@Display(employee.EmergencyContactPhone)</dd></div>
+            </dl>
+        </section>
+    }
+
+</div>
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private Employee? employee;
+    private bool loading = true;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        loading = true;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        employee = await db.Employees
+            .AsNoTracking()
+            .Include(e => e.Division)
+            .Include(e => e.Manager)
+            .FirstOrDefaultAsync(e => e.Id == Id);
+
+        loading = false;
+    }
+
+    private static string Display(string? value)
+        => string.IsNullOrWhiteSpace(value) ? "—" : value;
+
+    private static string DisplayDate(DateOnly? value)
+        => value?.ToString("dd MMM yyyy") ?? "—";
+}

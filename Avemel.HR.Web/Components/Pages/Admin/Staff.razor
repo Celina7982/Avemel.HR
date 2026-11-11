@@ -1,0 +1,88 @@
+﻿
+@page "/admin/staff"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using global::Avemel.HR.Domain.Entities
+@using global::Avemel.HR.Infrastructure.Persistence
+@using Microsoft.AspNetCore.Components
+@attribute [Authorize(Roles = "ADMIN,MANAGER")]
+@layout global::Avemel.HR.Web.Components.Avemel.AdminLayout
+@rendermode InteractiveServer
+
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+
+<div class="@(Created ? "alert alert-success" : "d-none")">
+    Employee created successfully.
+</div>
+
+<PageTitle>Staff Directory - Avemel HR</PageTitle>
+
+<h1>Staff Directory</h1>
+
+<p>Manage and view employees across the Avemel Group.</p>
+
+@if (loading)
+{
+    <p>Loading employees...</p>
+}
+else if (employees.Count == 0)
+{
+    <div class="alert alert-info">
+        No employees have been added yet.
+    </div>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Employee Number</th>
+                <th>Employee</th>
+                <th>Division</th>
+                <th>Job Title</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var employee in employees)
+            {
+                <tr>
+                    <td>@employee.EmployeeNumber</td>
+                    <td>
+                        <a href="@($"/admin/staff/{employee.Id}")"
+                           class="employee-name-link">
+                            @employee.FirstName @employee.LastName
+                        </a>
+                    </td>
+
+
+                    <td>@(employee.Division?.Name ?? "Unassigned")</td>
+                    <td>@employee.JobTitle</td>
+                    <td>@employee.Status</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [Parameter, SupplyParameterFromQuery(Name = "created")]
+    public bool Created { get; set; }
+
+    private List<Employee> employees = new();
+    private bool loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        employees = await db.Employees
+            .AsNoTracking()
+            .Include(e => e.Division)
+            .OrderBy(e => e.LastName)
+            .ThenBy(e => e.FirstName)
+            .ToListAsync();
+
+        loading = false;
+    }
+}
